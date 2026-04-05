@@ -14,10 +14,12 @@ app = Flask(__name__)
 
 
 def default_database_uri() -> str:
-    db_url = os.environ.get("DATABASE_URL")
+    db_url = os.environ.get("DATABASE_URL", "").strip()
     if db_url:
         if db_url.startswith("postgres://"):
-            return db_url.replace("postgres://", "postgresql://", 1)
+            db_url = db_url.replace("postgres://", "postgresql+psycopg://", 1)
+        elif db_url.startswith("postgresql://") and not db_url.startswith("postgresql+psycopg://"):
+            db_url = db_url.replace("postgresql://", "postgresql+psycopg://", 1)
         return db_url
     base_dir = os.path.abspath(os.path.dirname(__file__))
     return "sqlite:///" + os.path.join(base_dir, "app.db")
@@ -26,6 +28,9 @@ def default_database_uri() -> str:
 app.config["SQLALCHEMY_DATABASE_URI"] = default_database_uri()
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 app.config["JSON_SORT_KEYS"] = False
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+    "pool_pre_ping": True,
+}
 
 db = SQLAlchemy(app)
 
@@ -154,20 +159,67 @@ def chord_pitch_classes(chord_key: str) -> List[str]:
     return [SEMITONE_TO_PC[(root + interval) % 12] for interval in chord["intervals"]]
 
 
-def ensure_model_state() -> ModelState:
-    model = db.session.get(ModelState, 1)
-    if model is not None:
-        return model
-
-    logits = {}
+def build_default_transition_logits() -> Dict[str, Dict[str, float]]:
+    logits: Dict[str, Dict[str, float]] = {}
     for src in STATE_KEYS:
-        row = {}
+        row: Dict[str, float] = {}
         for dst in STATE_KEYS:
             p = INITIAL_TRANSITION_PROBS.get(src, {}).get(dst, 1e-4)
             row[dst] = math.log(max(p, 1e-6))
         logits[src] = row
+    return logits
 
-    model = ModelState(id=1, version=1, transition_logits=logits)
+
+def migrate_transition_logits(logits: Optional[Dict[str, Dict[str, float]]]) -> Tuple[Dict[str, Dict[str, float]], bool]:
+    default_logits = build_default_transition_logits()
+    if not isinstance(logits, dict):
+        return deepcopy(default_logits), True
+
+    changed = False
+    migrated: Dict[str, Dict[str, float]] = {}
+
+    for src in STATE_KEYS:
+        raw_row = logits.get(src, {})
+        if not isinstance(raw_row, dict):
+            raw_row = {}
+            changed = True
+
+        new_row: Dict[str, float] = {}
+        for dst in STATE_KEYS:
+            if dst in raw_row:
+                try:
+                    new_row[dst] = float(raw_row[dst])
+                except (TypeError, ValueError):
+                    new_row[dst] = float(default_logits[src][dst])
+                    changed = True
+            else:
+                new_row[dst] = float(default_logits[src][dst])
+                changed = True
+
+        extra_keys = set(raw_row.keys()) - set(STATE_KEYS)
+        if extra_keys:
+            changed = True
+
+        migrated[src] = new_row
+
+    extra_rows = set(logits.keys()) - set(STATE_KEYS)
+    if extra_rows:
+        changed = True
+
+    return migrated, changed
+
+
+def ensure_model_state() -> ModelState:
+    model = db.session.get(ModelState, 1)
+    if model is not None:
+        migrated_logits, changed = migrate_transition_logits(model.transition_logits)
+        if changed:
+            model.transition_logits = migrated_logits
+            model.updated_at = datetime.utcnow()
+            db.session.commit()
+        return model
+
+    model = ModelState(id=1, version=1, transition_logits=build_default_transition_logits())
     db.session.add(model)
     db.session.commit()
     return model
@@ -507,13 +559,15 @@ def generate_two_variations_from_measures(measures: List[List[str]]):
 
 
 def update_transition_logits_from_preference(model: ModelState, winner_keys: List[str], loser_keys: List[str]):
-    logits = deepcopy(model.transition_logits)
+    logits, _ = migrate_transition_logits(deepcopy(model.transition_logits))
     lr = model.learning_rate
 
     for prev_key, curr_key in zip(winner_keys[:-1], winner_keys[1:]):
-        logits[prev_key][curr_key] = float(logits[prev_key][curr_key]) + lr
+        if prev_key in logits and curr_key in logits[prev_key]:
+            logits[prev_key][curr_key] = float(logits[prev_key][curr_key]) + lr
     for prev_key, curr_key in zip(loser_keys[:-1], loser_keys[1:]):
-        logits[prev_key][curr_key] = float(logits[prev_key][curr_key]) - lr * 0.7
+        if prev_key in logits and curr_key in logits[prev_key]:
+            logits[prev_key][curr_key] = float(logits[prev_key][curr_key]) - lr * 0.7
 
     for src in STATE_KEYS:
         row = logits[src]
@@ -523,6 +577,7 @@ def update_transition_logits_from_preference(model: ModelState, winner_keys: Lis
 
     model.transition_logits = logits
     model.version += 1
+    model.updated_at = datetime.utcnow()
 
 
 @app.route("/")
