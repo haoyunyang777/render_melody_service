@@ -1,13 +1,13 @@
 const noteButtons = [
-  { label: 'C', note: 'C', key: 'a' },
-  { label: 'D', note: 'D', key: 's' },
-  { label: 'E', note: 'E', key: 'd' },
-  { label: 'F', note: 'F', key: 'f' },
-  { label: 'G', note: 'G', key: 'g' },
-  { label: 'A', note: 'A', key: 'h' },
-  { label: 'B', note: 'B', key: 'j' },
-  { label: "C'", note: 'C_HIGH', key: 'k' },
-  { label: "D'", note: 'D_HIGH', key: 'l' },
+  { label: 'C', note: 'C', key: 'A' },
+  { label: 'D', note: 'D', key: 'S' },
+  { label: 'E', note: 'E', key: 'D' },
+  { label: 'F', note: 'F', key: 'F' },
+  { label: 'G', note: 'G', key: 'G' },
+  { label: 'A', note: 'A', key: 'H' },
+  { label: 'B', note: 'B', key: 'J' },
+  { label: "C'", note: 'C_HIGH', key: 'K' },
+  { label: "D'", note: 'D_HIGH', key: 'L' },
   { label: "E'", note: 'E_HIGH', key: ';' },
   { label: "F'", note: 'F_HIGH', key: "'" }
 ];
@@ -17,50 +17,45 @@ const NOTE_TO_TONE = {
   C_HIGH: 'C5', D_HIGH: 'D5', E_HIGH: 'E5', F_HIGH: 'F5'
 };
 
-const CHORD_NOTES = {
-  C: ['C3', 'E3', 'G3', 'C4'],
-  Em: ['E2', 'G2', 'B2', 'E3'],
-  F: ['F2', 'A2', 'C3', 'F3'],
-  G: ['G2', 'B2', 'D3', 'G3'],
-  Am: ['A2', 'C3', 'E3', 'A3']
-};
-
-let melody = [];
+let measures = [];
+let currentMeasure = [];
 let latestComparison = null;
-let synth = null;
-let polySynth = null;
 let transportBusy = false;
 
-const pianoEl = document.getElementById('piano');
-const melodyMeasuresEl = document.getElementById('melodyMeasures');
-const noteCountEl = document.getElementById('noteCount');
-const modelVersionEl = document.getElementById('modelVersion');
-const resultSectionEl = document.getElementById('resultSection');
-const matrixEl = document.getElementById('matrix');
+let pianoSampler = null;
+let previewSynth = null;
+let reverb = null;
+let compressor = null;
 
-function groupMeasures(notes) {
-  const result = [];
-  for (let i = 0; i < notes.length; i += 4) result.push(notes.slice(i, i + 4));
-  return result;
-}
+const pianoEl = document.getElementById('piano');
+const noteCountEl = document.getElementById('noteCount');
+const measureCountEl = document.getElementById('measureCount');
+const melodyMeasuresEl = document.getElementById('melodyMeasures');
+const resultSectionEl = document.getElementById('resultSection');
+const modelVersionEl = document.getElementById('modelVersion');
+const matrixEl = document.getElementById('matrix');
 
 function formatNote(note) {
   return note.replace('_HIGH', "'");
 }
 
+function allMeasuresForDisplay() {
+  return currentMeasure.length ? [...measures, [...currentMeasure]] : [...measures];
+}
+
+function flattenMelody() {
+  return allMeasuresForDisplay().flat();
+}
+
 function renderMelody() {
-  noteCountEl.textContent = String(melody.length);
-  if (!melody.length) {
-    melodyMeasuresEl.textContent = '(empty)';
-    return;
-  }
-  melodyMeasuresEl.textContent = groupMeasures(melody)
-    .map(measure => measure.map(formatNote).join(' '))
-    .join(' | ');
+  const all = allMeasuresForDisplay();
+  noteCountEl.textContent = String(flattenMelody().length);
+  measureCountEl.textContent = String(all.length);
+  melodyMeasuresEl.textContent = all.length ? all.map(m => m.map(formatNote).join(' ')).join(' | ') : '(empty)';
 }
 
 function flashButton(note) {
-  const btn = document.querySelector(`[data-note="${note}"]`);
+  const btn = pianoEl.querySelector(`[data-note="${note}"]`);
   if (!btn) return;
   btn.classList.add('active');
   window.setTimeout(() => btn.classList.remove('active'), 120);
@@ -68,27 +63,68 @@ function flashButton(note) {
 
 async function ensureAudio() {
   if (!window.Tone) return;
-  if (!synth) {
-    await Tone.start();
-    synth = new Tone.Synth({
-      oscillator: { type: 'triangle' },
-      envelope: { attack: 0.01, decay: 0.1, sustain: 0.15, release: 0.2 }
-    }).toDestination();
-    polySynth = new Tone.PolySynth(Tone.Synth).toDestination();
+  if (pianoSampler && previewSynth) return;
+
+  await Tone.start();
+  compressor = new Tone.Compressor(-18, 4).toDestination();
+  reverb = new Tone.Reverb({ decay: 2.8, wet: 0.18 });
+  reverb.connect(compressor);
+
+  try {
+    pianoSampler = new Tone.Sampler({
+      urls: {
+        A1: 'A1.mp3', C2: 'C2.mp3', 'D#2': 'Ds2.mp3', 'F#2': 'Fs2.mp3',
+        A2: 'A2.mp3', C3: 'C3.mp3', 'D#3': 'Ds3.mp3', 'F#3': 'Fs3.mp3',
+        A3: 'A3.mp3', C4: 'C4.mp3', 'D#4': 'Ds4.mp3', 'F#4': 'Fs4.mp3', A4: 'A4.mp3', C5: 'C5.mp3'
+      },
+      baseUrl: 'https://tonejs.github.io/audio/salamander/',
+      release: 1.4
+    }).connect(reverb);
+    await Tone.loaded();
+  } catch (err) {
+    console.warn('Sampler failed to load, falling back to synth.', err);
+    pianoSampler = new Tone.PolySynth(Tone.AMSynth, {
+      harmonicity: 1.2,
+      oscillator: { type: 'sine' },
+      envelope: { attack: 0.01, decay: 0.35, sustain: 0.25, release: 1.3 }
+    }).connect(reverb);
   }
+
+  previewSynth = new Tone.Synth({
+    oscillator: { type: 'triangle' },
+    envelope: { attack: 0.005, decay: 0.08, sustain: 0.12, release: 0.25 }
+  }).connect(compressor);
 }
 
 async function playPreview(note) {
   await ensureAudio();
   const toneNote = NOTE_TO_TONE[note];
-  if (synth && toneNote) synth.triggerAttackRelease(toneNote, '8n');
+  if (toneNote) previewSynth.triggerAttackRelease(toneNote, '8n', Tone.now(), 0.8);
 }
 
 async function addNote(note) {
-  melody.push(note);
+  if (currentMeasure.length >= 4) endMeasure();
+  currentMeasure.push(note);
   renderMelody();
   flashButton(note);
   await playPreview(note);
+}
+
+function endMeasure() {
+  if (!currentMeasure.length) return;
+  measures.push([...currentMeasure]);
+  currentMeasure = [];
+  renderMelody();
+}
+
+function undoLast() {
+  if (currentMeasure.length) {
+    currentMeasure.pop();
+  } else if (measures.length) {
+    currentMeasure = measures.pop();
+    currentMeasure.pop();
+  }
+  renderMelody();
 }
 
 function buildPiano() {
@@ -96,7 +132,7 @@ function buildPiano() {
     const btn = document.createElement('button');
     btn.className = 'piano-key';
     btn.dataset.note = note;
-    btn.innerHTML = `<span>${label}</span><small>${key.toUpperCase()}</small>`;
+    btn.innerHTML = `<span>${label}</span><small>${key}</small>`;
     btn.addEventListener('click', () => addNote(note));
     pianoEl.appendChild(btn);
   });
@@ -111,8 +147,10 @@ function renderVariation(targetId, variation) {
     card.innerHTML = `
       <div class="measure-index">Bar ${idx + 1}</div>
       <div class="chord-label">${chord.label}</div>
-      <div class="tiny">emit ${chord.emission_score}</div>
-      <div class="tiny">${chord.transition_prob == null ? 'start' : 'trans ' + chord.transition_prob}</div>
+      <div class="tiny">${chord.roman} · ${chord.family}</div>
+      <div class="tiny">upper: ${chord.upper_notes.join(' ')}</div>
+      <div class="tiny">bass: ${chord.bass_note}</div>
+      <div class="tiny">${chord.reason}</div>
     `;
     root.appendChild(card);
   });
@@ -129,15 +167,15 @@ function renderComparison(data) {
 }
 
 async function generateVariations() {
-  if (melody.length < 4) {
+  const payloadMeasures = allMeasuresForDisplay();
+  if (payloadMeasures.flat().length < 4) {
     alert('Please enter at least 4 notes.');
     return;
   }
-
   const res = await fetch('/api/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ notes: melody })
+    body: JSON.stringify({ measures: payloadMeasures })
   });
   const data = await res.json();
   if (!res.ok) {
@@ -148,33 +186,48 @@ async function generateVariations() {
   await refreshModel();
 }
 
+function scheduleMeasurePlayback(baseTime, measureNotes, chord, bpm) {
+  const beatSeconds = 60 / bpm;
+  const melodyStep = 4 / measureNotes.length;
+  const sampler = pianoSampler;
+
+  sampler.triggerAttackRelease(chord.bass_note, '2n', baseTime, 0.50);
+  sampler.triggerAttackRelease(chord.upper_notes, '2n', baseTime + 0.02, 0.23);
+  sampler.triggerAttackRelease(chord.bass_fifth_note, '2n', baseTime + 2 * beatSeconds, 0.34);
+  sampler.triggerAttackRelease([chord.upper_notes[1], chord.upper_notes[2]].filter(Boolean), '2n', baseTime + 2 * beatSeconds + 0.02, 0.18);
+
+  const arp = chord.arpeggio_notes || chord.upper_notes;
+  if (arp.length >= 3) {
+    sampler.triggerAttackRelease(arp[0], '8n', baseTime + 0.5 * beatSeconds, 0.14);
+    sampler.triggerAttackRelease(arp[1], '8n', baseTime + 1.5 * beatSeconds, 0.12);
+    sampler.triggerAttackRelease(arp[2], '8n', baseTime + 3.5 * beatSeconds, 0.12);
+  }
+
+  for (let i = 0; i < measureNotes.length; i++) {
+    const toneNote = NOTE_TO_TONE[measureNotes[i]];
+    if (!toneNote) continue;
+    const startBeat = i * melodyStep;
+    sampler.triggerAttackRelease(toneNote, melodyStep * beatSeconds, baseTime + startBeat * beatSeconds, 0.78);
+  }
+}
+
 async function playVariation(which) {
   if (!latestComparison || transportBusy) return;
   await ensureAudio();
   transportBusy = true;
 
   const variation = which === 'A' ? latestComparison.variation_a : latestComparison.variation_b;
-  const measures = latestComparison.measures;
-  const beatSeconds = 60 / (latestComparison.bpm || 100);
-  const startAt = Tone.now() + 0.05;
+  const measureList = latestComparison.measures;
+  const bpm = latestComparison.bpm || 92;
+  const beatSeconds = 60 / bpm;
+  const startAt = Tone.now() + 0.08;
 
   let t = startAt;
-  for (let m = 0; m < measures.length; m++) {
-    const notes = measures[m];
-    const chord = variation.chords[m];
-    const chordNotes = CHORD_NOTES[chord.label] || CHORD_NOTES.C;
-
-    polySynth.triggerAttackRelease(chordNotes, '1m', t, 0.22);
-
-    for (let i = 0; i < notes.length; i++) {
-      const toneNote = NOTE_TO_TONE[notes[i]];
-      if (toneNote) synth.triggerAttackRelease(toneNote, '4n', t + i * beatSeconds, 0.8);
-    }
+  for (let m = 0; m < measureList.length; m++) {
+    scheduleMeasurePlayback(t, measureList[m], variation.chords[m], bpm);
     t += beatSeconds * 4;
   }
-
-  const totalMs = Math.ceil((t - startAt) * 1000) + 300;
-  window.setTimeout(() => { transportBusy = false; }, totalMs);
+  window.setTimeout(() => { transportBusy = false; }, Math.ceil((t - startAt) * 1000) + 500);
 }
 
 async function vote(which) {
@@ -198,7 +251,10 @@ async function vote(which) {
 }
 
 function loadDemoMelody() {
-  melody = ['C', 'C', 'G', 'G', 'A', 'A', 'G', 'G', 'F', 'F', 'E', 'E', 'D', 'D', 'C', 'C'];
+  measures = [['C','C','G','G'], ['A','A','G','G'], ['F','F','E','E'], ['D','D','C','C']];
+  currentMeasure = [];
+  latestComparison = null;
+  resultSectionEl.classList.add('hidden');
   renderMelody();
 }
 
@@ -231,12 +287,11 @@ async function refreshModel() {
 }
 
 function setupButtons() {
-  document.getElementById('undoBtn').addEventListener('click', () => {
-    melody.pop();
-    renderMelody();
-  });
+  document.getElementById('endMeasureBtn').addEventListener('click', endMeasure);
+  document.getElementById('undoBtn').addEventListener('click', undoLast);
   document.getElementById('clearBtn').addEventListener('click', () => {
-    melody = [];
+    measures = [];
+    currentMeasure = [];
     latestComparison = null;
     resultSectionEl.classList.add('hidden');
     renderMelody();
@@ -250,17 +305,17 @@ function setupButtons() {
 }
 
 function setupKeyboardInput() {
-  const keyMap = {
-    a: 'C', s: 'D', d: 'E', f: 'F', g: 'G', h: 'A', j: 'B',
-    k: 'C_HIGH', l: 'D_HIGH', ';': 'E_HIGH', "'": 'F_HIGH'
-  };
-
-  window.addEventListener('keydown', async (event) => {
+  const keyMap = { a: 'C', s: 'D', d: 'E', f: 'F', g: 'G', h: 'A', j: 'B', k: 'C_HIGH', l: 'D_HIGH', ';': 'E_HIGH', "'": 'F_HIGH' };
+  window.addEventListener('keydown', async event => {
     if (event.target && ['INPUT', 'TEXTAREA'].includes(event.target.tagName)) return;
+    if (event.key === ' ') {
+      event.preventDefault();
+      endMeasure();
+      return;
+    }
     if (event.key === 'Backspace') {
       event.preventDefault();
-      melody.pop();
-      renderMelody();
+      undoLast();
       return;
     }
     const note = keyMap[event.key.toLowerCase()];

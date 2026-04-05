@@ -11,10 +11,10 @@
 <body>
   <main class="container">
     <header class="hero">
-      <h1>Melody → Two Chord Variations</h1>
+      <h1>Melody → Two Better-Sounding Chord Variations</h1>
       <p>
-        Input a melody with the piano keyboard, generate two HMM chord paths, listen to both,
-        and vote for the better one. Votes are fed back into the transition model.
+        Enter a melody, mark the end of each measure, generate two HMM chord paths with improved
+        harmonic scoring and voicing, then listen and vote for the better one.
       </p>
     </header>
 
@@ -22,21 +22,23 @@
       <div class="row space-between wrap">
         <div>
           <h2>1. Enter melody</h2>
-          <p class="muted">One note per beat. Measures are grouped automatically every 4 notes.</p>
+          <p class="muted">One note per beat. Click <strong>End measure</strong> or press <strong>Space</strong> to close the current bar.</p>
         </div>
         <div class="status-box">
           <div><strong>Model version:</strong> <span id="modelVersion">-</span></div>
           <div><strong>Notes entered:</strong> <span id="noteCount">0</span></div>
+          <div><strong>Measures:</strong> <span id="measureCount">0</span></div>
         </div>
       </div>
 
       <div id="piano" class="piano"></div>
 
       <div class="keyboard-help">
-        Computer keyboard: A S D F G H J = C D E F G A B, K L ; ' = C' D' E' F'
+        Computer keyboard: A S D F G H J = C D E F G A B, K L ; ' = C' D' E' F', Space = end measure
       </div>
 
       <div class="controls wrap">
+        <button id="endMeasureBtn" class="secondary">End measure | Space</button>
         <button id="undoBtn" class="secondary">Undo</button>
         <button id="clearBtn" class="secondary">Clear</button>
         <button id="demoBtn" class="secondary">Load demo melody</button>
@@ -80,15 +82,18 @@
 
     <section class="panel">
       <h2>3. Transition model</h2>
-      <p class="muted">This matrix is the current HMM transition probability table used to rank chord sequences.</p>
+      <p class="muted">
+        The matrix below is the current HMM transition probability table. Voting updates the transition
+        logits so the system gradually prefers progressions that listeners choose.
+      </p>
       <div id="matrix" class="matrix"></div>
     </section>
 
     <section class="panel footnote">
-      <h2>Notes</h2>
+      <h2>Why this sounds better than the old version</h2>
       <p>
-        This app uses online preference updates on the HMM transition weights. It is reinforcement-like
-        preference learning, not a full offline RLHF training pipeline.
+        This version uses a larger chord state space (including 7th chords), better harmonic-position scoring,
+        and voice-led playback voicings instead of one fixed block chord per label.
       </p>
     </section>
   </main>
