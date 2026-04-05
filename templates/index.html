@@ -1,41 +1,308 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Melody Chord Preference Trainer</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/15.1.22/Tone.min.js" defer></script>
-  <script src="{{ url_for('static', filename='app.js') }}" defer></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Melody Harmonizer RL Demo</title>
+  <script src="https://unpkg.com/tone@14.7.77/build/Tone.js"></script>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --panel: #171b24;
+      --panel-2: #1f2430;
+      --text: #e8ecf3;
+      --muted: #aab4c3;
+      --line: #2a3140;
+      --primary: #4da3ff;
+      --primary-2: #1d4ed8;
+      --success-bg: #183a24;
+      --success-fg: #b8f5c8;
+      --warn-bg: #4a3412;
+      --warn-fg: #ffd89a;
+      --error-bg: #4a1f24;
+      --error-fg: #ffb8c0;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px 18px 40px;
+    }
+
+    h1, h2, h3 {
+      margin: 0 0 12px 0;
+    }
+
+    p {
+      margin: 0 0 10px 0;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 16px;
+      margin-bottom: 18px;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+    }
+
+    .controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .controls.wrap {
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.12s ease, opacity 0.12s ease, box-shadow 0.15s ease, background 0.15s ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+    }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    button.primary {
+      background: var(--primary);
+      color: white;
+    }
+
+    button.primary:hover {
+      background: var(--primary-2);
+    }
+
+    button.secondary {
+      background: var(--panel-2);
+      color: var(--text);
+      border: 1px solid var(--line);
+    }
+
+    button.secondary:hover {
+      background: #283041;
+    }
+
+    .stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      margin: 10px 0 14px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .mono-box {
+      background: #10141d;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+      font-family: Consolas, Monaco, monospace;
+      white-space: pre-wrap;
+      word-break: break-word;
+      min-height: 58px;
+    }
+
+    .piano-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .piano-key {
+      min-height: 82px;
+      background: linear-gradient(180deg, #f5f7fb, #dfe6f1);
+      color: #111827;
+      border: 1px solid #cfd6e3;
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .piano-key small {
+      margin-top: 6px;
+      color: #4b5563;
+      font-size: 11px;
+    }
+
+    .piano-key.active {
+      background: linear-gradient(180deg, #fff7cf, #ffe38f);
+      box-shadow: 0 0 0 3px rgba(255, 219, 77, 0.25);
+    }
+
+    .action-feedback {
+      margin: 10px 0 14px 0;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: var(--panel-2);
+      color: var(--text);
+      font-size: 14px;
+      transition: all 0.2s ease;
+    }
+
+    .action-feedback.info {
+      background: var(--panel-2);
+      color: var(--text);
+    }
+
+    .action-feedback.success {
+      background: var(--success-bg);
+      color: var(--success-fg);
+    }
+
+    .action-feedback.warn {
+      background: var(--warn-bg);
+      color: var(--warn-fg);
+    }
+
+    .action-feedback.error {
+      background: var(--error-bg);
+      color: var(--error-fg);
+    }
+
+    .measure-flash {
+      outline: 2px solid #7ee787;
+      background: rgba(126, 231, 135, 0.10);
+      border-radius: 8px;
+      transition: all 0.18s ease;
+    }
+
+    .btn-flash {
+      box-shadow: 0 0 0 3px rgba(126, 231, 135, 0.35);
+      transform: translateY(-1px);
+      transition: all 0.15s ease;
+    }
+
+    .comparison-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 14px;
+    }
+
+    .variation-card {
+      background: #10141d;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px;
+    }
+
+    .variation-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    .variation-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    .chord-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .chord-cell {
+      background: #171d29;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px;
+    }
+
+    .measure-index {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+
+    .chord-label {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .tiny {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .matrix-wrap {
+      overflow-x: auto;
+    }
+
+    .matrix-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      min-width: 760px;
+    }
+
+    .matrix-table th,
+    .matrix-table td {
+      border: 1px solid var(--line);
+      padding: 8px 10px;
+      text-align: center;
+    }
+
+    .matrix-table th {
+      background: #121722;
+    }
+
+    @media (max-width: 900px) {
+      .comparison-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
 </head>
 <body>
-  <main class="container">
-    <header class="hero">
-      <h1>Melody → Two Better-Sounding Chord Variations</h1>
-      <p>
-        Enter a melody, mark the end of each measure, generate two HMM chord paths with improved
-        harmonic scoring and voicing, then listen and vote for the better one.
+  <div class="container">
+    <div class="panel">
+      <h1>Melody Harmonizer RL Demo</h1>
+      <p class="muted">
+        One note per beat. Click <strong>End measure</strong> or press <strong>Space</strong> to close the current bar.
       </p>
-    </header>
-
-    <section class="panel">
-      <div class="row space-between wrap">
-        <div>
-          <h2>1. Enter melody</h2>
-          <p class="muted">One note per beat. Click <strong>End measure</strong> or press <strong>Space</strong> to close the current bar.</p>
-        </div>
-        <div class="status-box">
-          <div><strong>Model version:</strong> <span id="modelVersion">-</span></div>
-          <div><strong>Notes entered:</strong> <span id="noteCount">0</span></div>
-          <div><strong>Measures:</strong> <span id="measureCount">0</span></div>
-        </div>
-      </div>
-
-      <div id="piano" class="piano"></div>
-
-      <div class="keyboard-help">
-        Computer keyboard: A S D F G H J = C D E F G A B, K L ; ' = C' D' E' F', Space = end measure
-      </div>
 
       <div class="controls wrap">
         <button id="endMeasureBtn" class="secondary">End measure | Space</button>
@@ -45,57 +312,63 @@
         <button id="generateBtn" class="primary">Generate 2 chord variations</button>
       </div>
 
-      <div class="melody-box">
-        <div class="muted">Melody</div>
-        <div id="melodyMeasures" class="melody-text">(empty)</div>
-      </div>
-    </section>
+      <div id="actionFeedback" class="action-feedback">Ready.</div>
 
-    <section id="resultSection" class="panel hidden">
-      <h2>2. Listen and compare</h2>
-      <div class="two-col">
-        <article class="variation-card">
+      <div class="stats">
+        <div>Notes: <strong id="noteCount">0</strong></div>
+        <div>Measures: <strong id="measureCount">0</strong></div>
+      </div>
+
+      <h3>Piano keyboard</h3>
+      <div id="piano" class="piano-grid"></div>
+
+      <h3 style="margin-top:18px;">Melody measures</h3>
+      <div id="melodyMeasures" class="mono-box">(empty)</div>
+    </div>
+
+    <div id="resultSection" class="panel hidden">
+      <h2>Chord comparison</h2>
+      <p class="muted">Listen to both versions, then vote for the better one.</p>
+
+      <div class="comparison-grid">
+        <div class="variation-card">
           <div class="variation-head">
             <h3>Variation A</h3>
-            <span id="scoreA" class="badge"></span>
+            <div id="scoreA" class="muted">score -</div>
           </div>
-          <div id="chordsA" class="chord-grid"></div>
-          <div class="controls wrap">
+          <div class="variation-actions">
             <button id="playA" class="secondary">Play A</button>
-            <button id="voteA" class="vote">Vote A is better</button>
+            <button id="voteA" class="primary">Vote A is better</button>
           </div>
-        </article>
+          <div id="chordsA" class="chord-list"></div>
+        </div>
 
-        <article class="variation-card">
+        <div class="variation-card">
           <div class="variation-head">
             <h3>Variation B</h3>
-            <span id="scoreB" class="badge"></span>
+            <div id="scoreB" class="muted">score -</div>
           </div>
-          <div id="chordsB" class="chord-grid"></div>
-          <div class="controls wrap">
+          <div class="variation-actions">
             <button id="playB" class="secondary">Play B</button>
-            <button id="voteB" class="vote">Vote B is better</button>
+            <button id="voteB" class="primary">Vote B is better</button>
           </div>
-        </article>
+          <div id="chordsB" class="chord-list"></div>
+        </div>
       </div>
-    </section>
+    </div>
 
-    <section class="panel">
-      <h2>3. Transition model</h2>
-      <p class="muted">
-        The matrix below is the current HMM transition probability table. Voting updates the transition
-        logits so the system gradually prefers progressions that listeners choose.
-      </p>
-      <div id="matrix" class="matrix"></div>
-    </section>
+    <div class="panel">
+      <h2>Model status</h2>
+      <p class="muted">Current online-learned transition matrix.</p>
+      <div class="stats">
+        <div>Model version: <strong id="modelVersion">-</strong></div>
+      </div>
+      <div class="matrix-wrap">
+        <div id="matrix"></div>
+      </div>
+    </div>
+  </div>
 
-    <section class="panel footnote">
-      <h2>Why this sounds better than the old version</h2>
-      <p>
-        This version uses a larger chord state space (including 7th chords), better harmonic-position scoring,
-        and voice-led playback voicings instead of one fixed block chord per label.
-      </p>
-    </section>
-  </main>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>
