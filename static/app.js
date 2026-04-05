@@ -60,6 +60,16 @@ const DEMO_MELODIES = [
   }
 ];
 
+const BLACK_KEY_VISUALS = [
+  { afterWhiteIndex: 0, label: 'C#' },
+  { afterWhiteIndex: 1, label: 'D#' },
+  { afterWhiteIndex: 3, label: 'F#' },
+  { afterWhiteIndex: 4, label: 'G#' },
+  { afterWhiteIndex: 5, label: 'A#' },
+  { afterWhiteIndex: 7, label: "C#" },
+  { afterWhiteIndex: 8, label: "D#" }
+];
+
 let measures = [];
 let currentMeasure = [];
 let latestComparison = null;
@@ -236,18 +246,40 @@ function undoLast() {
 }
 
 function buildPiano() {
+  pianoEl.innerHTML = '';
+
+  const whiteKeysWrap = document.createElement('div');
+  whiteKeysWrap.className = 'white-keys';
+
   noteButtons.forEach(({ label, note, key, solfege }) => {
     const btn = document.createElement('button');
-    btn.className = 'piano-key';
+    btn.className = 'white-key';
     btn.dataset.note = note;
     btn.innerHTML = `
-      <small>${solfege}</small>
-      <span>${label}</span>
-      <small>${key}</small>
+      <div class="solfege">${solfege}</div>
+      <div class="note-label">${label}</div>
+      <div class="key-hint">${key}</div>
     `;
     btn.addEventListener('click', () => addNote(note));
-    pianoEl.appendChild(btn);
+    whiteKeysWrap.appendChild(btn);
   });
+
+  const blackKeysWrap = document.createElement('div');
+  blackKeysWrap.className = 'black-keys';
+
+  const whiteKeyWidth = 68;
+  const blackKeyWidth = 42;
+
+  BLACK_KEY_VISUALS.forEach(({ afterWhiteIndex }) => {
+    const black = document.createElement('div');
+    black.className = 'black-key';
+    const left = (afterWhiteIndex + 1) * whiteKeyWidth - blackKeyWidth / 2;
+    black.style.left = `${left}px`;
+    blackKeysWrap.appendChild(black);
+  });
+
+  pianoEl.appendChild(whiteKeysWrap);
+  pianoEl.appendChild(blackKeysWrap);
 }
 
 function renderVariation(targetId, variation) {
@@ -401,10 +433,21 @@ async function vote(which) {
       })
     });
 
-    const data = await res.json();
+    const rawText = await res.text();
+    let data = null;
+
+    try {
+      data = JSON.parse(rawText);
+    } catch (e) {
+      data = null;
+    }
 
     if (!res.ok) {
-      showFeedback(data.error || 'Vote failed.', 'error');
+      const msg =
+        (data && data.error) ||
+        rawText ||
+        `Vote failed with status ${res.status}`;
+      showFeedback(msg, 'error');
       return;
     }
 
@@ -418,7 +461,7 @@ async function vote(which) {
     );
   } catch (err) {
     console.error(err);
-    showFeedback('Vote failed due to network/server error.', 'error');
+    showFeedback(`Vote failed: ${err.message}`, 'error');
   } finally {
     voteABtn.disabled = false;
     voteBBtn.disabled = false;
