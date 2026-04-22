@@ -66,8 +66,8 @@ const BLACK_KEY_VISUALS = [
   { afterWhiteIndex: 3, label: 'F#' },
   { afterWhiteIndex: 4, label: 'G#' },
   { afterWhiteIndex: 5, label: 'A#' },
-  { afterWhiteIndex: 7, label: "C#" },
-  { afterWhiteIndex: 8, label: "D#" }
+  { afterWhiteIndex: 7, label: 'C#' },
+  { afterWhiteIndex: 8, label: 'D#' }
 ];
 
 let measures = [];
@@ -96,6 +96,8 @@ const demoBtn = document.getElementById('demoBtn');
 const generateBtn = document.getElementById('generateBtn');
 const playABtn = document.getElementById('playA');
 const playBBtn = document.getElementById('playB');
+const downloadABtn = document.getElementById('downloadA');
+const downloadBBtn = document.getElementById('downloadB');
 const voteABtn = document.getElementById('voteA');
 const voteBBtn = document.getElementById('voteB');
 
@@ -301,6 +303,25 @@ function renderVariation(targetId, variation) {
   });
 }
 
+function buildMusicXmlUrl(which) {
+  if (!latestComparison || !latestComparison.comparison_id) return null;
+
+  if (which === 'A') {
+    return latestComparison.musicxml_a_url || `/api/comparison/${latestComparison.comparison_id}/musicxml/A`;
+  }
+  return latestComparison.musicxml_b_url || `/api/comparison/${latestComparison.comparison_id}/musicxml/B`;
+}
+
+function openDownloadUrl(url) {
+  const link = document.createElement('a');
+  link.href = url;
+  link.target = '_blank';
+  link.rel = 'noopener';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
 function renderComparison(data) {
   latestComparison = data;
   resultSectionEl.classList.remove('hidden');
@@ -309,7 +330,15 @@ function renderComparison(data) {
   renderVariation('chordsA', data.variation_a);
   renderVariation('chordsB', data.variation_b);
   modelVersionEl.textContent = String(data.model_version);
-  showFeedback('Generated 2 chord variations. Play A/B and vote.', 'success');
+
+  const hasMusicXml = Boolean(
+    data.musicxml_a_url || data.musicxml_b_url || data.comparison_id
+  );
+
+  downloadABtn.disabled = !hasMusicXml;
+  downloadBBtn.disabled = !hasMusicXml;
+
+  showFeedback('Generated 2 chord variations. Play, download MusicXML, and vote.', 'success');
 }
 
 async function generateVariations() {
@@ -413,6 +442,23 @@ async function playVariation(which) {
   }, Math.ceil((t - startAt) * 1000) + 500);
 }
 
+function downloadMusicXml(which) {
+  if (!latestComparison) {
+    showFeedback('Generate chord variations first.', 'warn');
+    return;
+  }
+
+  const url = buildMusicXmlUrl(which);
+  if (!url) {
+    showFeedback(`MusicXML ${which} is not available.`, 'error');
+    return;
+  }
+
+  flashElement(which === 'A' ? downloadABtn : downloadBBtn, 'btn-flash', 260);
+  showFeedback(`Downloading MusicXML ${which}...`, 'success');
+  openDownloadUrl(url);
+}
+
 async function vote(which) {
   if (!latestComparison) {
     showFeedback('Generate chord variations first.', 'warn');
@@ -492,7 +538,7 @@ function renderMatrixTable(transition_probs) {
 
   const thead = document.createElement('thead');
   const hr = document.createElement('tr');
-  hr.innerHTML = '<th>From \\ To</th>' + states.map(s => `<th>${s}</th>`).join('');
+  hr.innerHTML = '<th>From \\\\ To</th>' + states.map(s => `<th>${s}</th>`).join('');
   thead.appendChild(hr);
   table.appendChild(thead);
 
@@ -532,6 +578,8 @@ function setupButtons() {
     latestComparison = null;
     resultSectionEl.classList.add('hidden');
     renderMelody();
+    downloadABtn.disabled = true;
+    downloadBBtn.disabled = true;
     flashElement(clearBtn);
     showFeedback('Cleared melody input.', 'info');
   });
@@ -540,6 +588,8 @@ function setupButtons() {
   generateBtn.addEventListener('click', generateVariations);
   playABtn.addEventListener('click', () => playVariation('A'));
   playBBtn.addEventListener('click', () => playVariation('B'));
+  downloadABtn.addEventListener('click', () => downloadMusicXml('A'));
+  downloadBBtn.addEventListener('click', () => downloadMusicXml('B'));
   voteABtn.addEventListener('click', () => vote('A'));
   voteBBtn.addEventListener('click', () => vote('B'));
 }
@@ -586,5 +636,7 @@ buildPiano();
 setupButtons();
 setupKeyboardInput();
 renderMelody();
+downloadABtn.disabled = true;
+downloadBBtn.disabled = true;
 showFeedback('Ready. Click piano keys or load a random demo melody.', 'info');
 refreshModel();

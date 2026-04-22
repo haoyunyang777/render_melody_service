@@ -423,7 +423,7 @@
 <body>
   <div class="container">
     <div class="panel">
-      <h1>Melody Harmonizer RL Demo</h1>      
+      <h1>Melody Harmonizer RL Demo</h1>
 
       <div class="instruction-box">
         <div class="instruction-grid">
@@ -435,7 +435,7 @@
               <li>Click <strong>End measure</strong> or press <code>Space</code> to finish the current measure.</li>
               <li>Click <strong>Load demo melody</strong> to load a random demo melody.</li>
               <li>Click <strong>Generate 2 chord variations</strong> to create two accompaniments.</li>
-              <li>Then click <strong>Play A / Play B</strong> and vote for the better one.</li>
+              <li>Then click <strong>Play A / Play B</strong>, <strong>Download MusicXML</strong>, and vote for the better one.</li>
             </ul>
           </div>
 
@@ -447,7 +447,7 @@
               <li>按下 <strong>End measure</strong> 或鍵盤 <code>Space</code>，結束目前這一小節。</li>
               <li>按下 <strong>Load demo melody</strong>，可隨機載入一首示範旋律。</li>
               <li>按下 <strong>Generate 2 chord variations</strong>，產生兩個和弦伴奏版本。</li>
-              <li>之後按 <strong>Play A / Play B</strong> 試聽，再投票選出較好聽的版本。</li>
+              <li>之後可按 <strong>Play A / Play B</strong> 試聽、按 <strong>Download MusicXML</strong> 下載，再投票選出較好聽的版本。</li>
             </ul>
           </div>
         </div>
@@ -479,7 +479,7 @@
 
     <div id="resultSection" class="panel hidden">
       <h2>Chord comparison</h2>
-      <p class="muted">Listen to both versions, then vote for the better one.</p>
+      <p class="muted">Listen to both versions, download the MusicXML if needed, then vote for the better one.</p>
 
       <div class="comparison-grid">
         <div class="variation-card">
@@ -489,6 +489,7 @@
           </div>
           <div class="variation-actions">
             <button id="playA" class="secondary">Play A</button>
+            <button id="downloadA" class="secondary">Download MusicXML A</button>
             <button id="voteA" class="primary">Vote A is better</button>
           </div>
           <div id="chordsA" class="chord-list"></div>
@@ -501,6 +502,7 @@
           </div>
           <div class="variation-actions">
             <button id="playB" class="secondary">Play B</button>
+            <button id="downloadB" class="secondary">Download MusicXML B</button>
             <button id="voteB" class="primary">Vote B is better</button>
           </div>
           <div id="chordsB" class="chord-list"></div>
